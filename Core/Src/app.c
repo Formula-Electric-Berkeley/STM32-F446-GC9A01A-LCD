@@ -13,7 +13,7 @@ extern UART_HandleTypeDef huart2;
 
 
 
-uint8_t initcmd[] = {
+static const uint8_t initcmd[] = {
   GC9A01A_INREGEN2, 0,
   0xEB, 1, 0x14, // ?
   GC9A01A_INREGEN1, 0,
@@ -75,57 +75,11 @@ uint8_t initcmd[] = {
 static inline void swap_bytes(size_t len, uint16_t *dest, uint16_t *src) {
   for (size_t i = 0; i < len; i += 1) {
     dest[i] = __builtin_bswap16(src[i]);
-//    dest[i] = src[i];
   }
 }
 
 
-void spi_start() {
-//  digitalWrite(TFT_CS, LOW);
-  HAL_GPIO_WritePin(TFT_CS_GPIO, TFT_CS_PIN, GPIO_PIN_RESET);
-}
-
-void spi_end() {
-//  digitalWrite(TFT_CS, HIGH);
-  HAL_GPIO_WritePin(TFT_CS_GPIO, TFT_CS_PIN, GPIO_PIN_SET);
-}
-
-
-void write_command(uint8_t cmd) {
-//  digitalWrite(TFT_DC, LOW);
-  HAL_GPIO_WritePin(TFT_DC_GPIO, TFT_DC_PIN, GPIO_PIN_RESET);
-
-//  SPI.transfer(cmd);
-  HAL_SPI_Transmit(&hspi1, &cmd, 1, 100);
-
-//  digitalWrite(TFT_DC, HIGH);
-  HAL_GPIO_WritePin(TFT_DC_GPIO, TFT_DC_PIN, GPIO_PIN_SET);
-}
-
-
-void send_command(uint8_t commandByte, uint8_t *dataBytes, uint8_t numDataBytes) {
-  spi_start();
-
-  // digitalWrite(TFT_DC, LOW);
-  HAL_GPIO_WritePin(TFT_DC_GPIO, TFT_DC_PIN, GPIO_PIN_RESET);
-
-
-  // SPI.transfer(commandByte);
-  HAL_SPI_Transmit(&hspi1, &commandByte, 1, 100);
-
-  // digitalWrite(TFT_DC, HIGH);
-  HAL_GPIO_WritePin(TFT_DC_GPIO, TFT_DC_PIN, GPIO_PIN_SET);
-
-  for (int i = 0; i < numDataBytes; i += 1) {
-    // SPI.transfer(pgm_read_byte(dataBytes++));
-    HAL_SPI_Transmit(&hspi1, (uint8_t *)dataBytes, 1, 100);
-    dataBytes += 1;
-  }
-
-  spi_end();
-}
-
-static inline void SPI_setMode(SPI_HandleTypeDef *hspi, uint32_t data_size) {
+static inline void set_spi_datasize(SPI_HandleTypeDef *hspi, uint32_t data_size) {
   hspi1.Init.DataSize = data_size;
   WRITE_REG(hspi->Instance->CR1, ((hspi->Init.Mode & (SPI_CR1_MSTR | SPI_CR1_SSI)) |
                                     (hspi->Init.Direction & (SPI_CR1_RXONLY | SPI_CR1_BIDIMODE)) |
@@ -139,98 +93,99 @@ static inline void SPI_setMode(SPI_HandleTypeDef *hspi, uint32_t data_size) {
 }
 
 
-static inline void SPI_WRITE16(uint16_t w) {
-//  swap_bytes(1, &w, &w);
-  SPI_setMode(&hspi1, SPI_DATASIZE_16BIT);
-  HAL_SPI_Transmit(&hspi1, (uint8_t *)&w, 1, 100);
-  SPI_setMode(&hspi1, SPI_DATASIZE_8BIT);
+static inline void start_spi_transaction() {
+  HAL_GPIO_WritePin(TFT_CS_GPIO, TFT_CS_PIN, GPIO_PIN_RESET);
+}
+
+static inline void end_spi_transaction() {
+  HAL_GPIO_WritePin(TFT_CS_GPIO, TFT_CS_PIN, GPIO_PIN_SET);
+}
+
+static inline void transmit_command(uint8_t command) {
+  // set DC pin to LOW, enter command mode
+  HAL_GPIO_WritePin(TFT_DC_GPIO, TFT_DC_PIN, GPIO_PIN_RESET);
+
+  // send command
+  HAL_SPI_Transmit(&hspi1, &command, 1, 100);
+
+  // set DC pin to HIGH, return to data mode
+  HAL_GPIO_WritePin(TFT_DC_GPIO, TFT_DC_PIN, GPIO_PIN_SET);
+}
+
+static inline void transmit_data(size_t n, uint16_t *data) {
+  HAL_SPI_Transmit(&hspi1, (uint8_t *)data, n, 100);
 }
 
 
-void set_addr_window(uint16_t x1, uint16_t y1, uint16_t w,
-                                     uint16_t h) {
+void configure_param(uint8_t command, uint8_t *data, uint8_t n_data) {
+  start_spi_transaction();
+
+  set_spi_datasize(&hspi1, SPI_DATASIZE_8BIT);
+
+  transmit_command(command);
+
+  // write param value
+  HAL_SPI_Transmit(&hspi1, (uint8_t *)data, n_data, 100);
+
+  end_spi_transaction();
+}
+
+
+void set_addr_window(uint16_t x1, uint16_t y1, uint16_t w, uint16_t h) {
   uint16_t x2 = (x1 + w - 1), y2 = (y1 + h - 1);
-  write_command(GC9A01A_CASET); // Column address set
-  SPI_WRITE16(x1);
-  SPI_WRITE16(x2);
-  write_command(GC9A01A_RASET); // Row address set
-  SPI_WRITE16(y1);
-  SPI_WRITE16(y2);
-  write_command(GC9A01A_RAMWR); // Write to RAM
+
+  set_spi_datasize(&hspi1, SPI_DATASIZE_8BIT);
+  transmit_command(GC9A01A_CASET); // Column address set
+
+  set_spi_datasize(&hspi1, SPI_DATASIZE_16BIT);
+  transmit_data(1, &x1);
+  transmit_data(1, &x2);
+
+  set_spi_datasize(&hspi1, SPI_DATASIZE_8BIT);
+  transmit_command(GC9A01A_RASET); // Row address set
+
+  set_spi_datasize(&hspi1, SPI_DATASIZE_16BIT);
+  transmit_data(1, &y1);
+  transmit_data(1, &y2);
+
+  set_spi_datasize(&hspi1, SPI_DATASIZE_8BIT);
+  transmit_command(GC9A01A_RAMWR); // Write to RAM
 }
 
-void write_pixels(uint16_t *colors, uint32_t len) {
-  SPI_setMode(&hspi1, SPI_DATASIZE_16BIT);
-  HAL_SPI_Transmit(&hspi1, (uint8_t *)colors, len, 100);
-  SPI_setMode(&hspi1, SPI_DATASIZE_8BIT);
-}
 
 void draw_pixel(int16_t x, int16_t y, uint16_t color) {
-  spi_start();
+  start_spi_transaction();
 
   set_addr_window(x, y, 1, 1);
-  SPI_WRITE16(color);
 
-  spi_end();
+  set_spi_datasize(&hspi1, SPI_DATASIZE_16BIT);
+  transmit_data(1, &color);
+
+  end_spi_transaction();
 }
 
-void write_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
-                             uint16_t color) {
-  int16_t dx, dy;
-  dx = x1 - x0;
-  dy = abs(y1 - y0);
+void draw_pixels(uint16_t x, uint16_t y, uint16_t *color, uint16_t width, uint16_t height) {
+  start_spi_transaction();
 
-  int16_t err = dx / 2;
-  int16_t ystep;
+  set_addr_window(x, y, width, height);
 
-  if (y0 < y1) {
-    ystep = 1;
-  } else {
-    ystep = -1;
+  uint16_t *data_ptr = color;
+
+  set_spi_datasize(&hspi1, SPI_DATASIZE_16BIT);
+  for (size_t i = 0; i < height; i += 1) {    // For each scanline...
+    transmit_data(width, data_ptr);           // Push one row
+    data_ptr += width;                        // Advance pointer by one full line
   }
 
-  for (; x0 <= x1; x0++) {
-    draw_pixel(x0, y0, color);
+  end_spi_transaction();
+}
 
-    err -= dy;
-    if (err < 0) {
-      y0 += ystep;
-      err += dx;
-    }
-  }
+void draw_screen(uint16_t *img) {
+  draw_pixels(0, 0, img, WIDTH, HEIGHT);
 }
 
 
-void fill_screen(uint16_t pcolor) {
-  spi_start();
-  set_addr_window(0, 0, WIDTH, HEIGHT);// Clipped area
 
-  for (size_t i = 0; i < HEIGHT; i += 1) {             // For each (clipped) scanline...
-    for (size_t j = 0; j < WIDTH; j += 1) {
-      SPI_WRITE16(pcolor);  // Push one (clipped) row
-    }
-  }
-
-  spi_end();
-}
-
-void draw_rgb_bitmap(int16_t x, int16_t y, uint16_t *pcolors, int16_t w, int16_t h) {
-  spi_start();
-  set_addr_window(0, 0, w, h);// Clipped area
-
-
-//  SPI_setMode(&hspi1, SPI_DATASIZE_16BIT);
-//  HAL_SPI_Transmit(&hspi1, (uint8_t *)pcolors, h*w, 100);
-//  SPI_setMode(&hspi1, SPI_DATASIZE_8BIT);
-
-  for (size_t i = 0; i < h; i += 1) {             // For each (clipped) scanline...
-    write_pixels(pcolors, w);  // Push one (clipped) row
-    pcolors += w;             // Advance pointer by one full (unclipped) line
-  }
-
-//  HAL_SPI_Transmit(&hspi1, (uint8_t *)pcolors, h*w*2, 100);
-  spi_end();
-}
 
 uint16_t img[240 * 240];
 uint8_t counter;
@@ -267,7 +222,7 @@ void APP_init() {
     x = *addr;
     addr += 1;
     numArgs = x & 0x7F;
-    send_command(cmd, addr, numArgs);
+    configure_param(cmd, addr, numArgs);
     addr += numArgs;
     if (x & 0x80)
       HAL_Delay(150);
@@ -276,15 +231,19 @@ void APP_init() {
 //  digitalWrite(TFT_BL, HIGH); // Backlight on
   HAL_GPIO_WritePin(TFT_BL_GPIO, TFT_BL_PIN, GPIO_PIN_SET);
 
-  fill_screen(0xFFFF);
+
+  for (size_t r = 0; r < HEIGHT; r += 1) {
+    for (size_t c = 0; c < WIDTH; c += 1) {
+      draw_pixel(c, r, 0xFFFF);
+    }
+  }
 }
 
 
 void APP_main() {
-  char str[128];
-
-  //  sprintf(str, "Done!\n");
-  //  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen(str), 100);
+//  char str[128];
+//  sprintf(str, "Done!\n");
+//  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen(str), 100);
 
   for (size_t r = 0; r < HEIGHT; r += 1) {
     for (size_t c = 0; c < WIDTH; c += 1) {
@@ -293,19 +252,16 @@ void APP_main() {
     }
   }
 
-  draw_rgb_bitmap(0, 0, img, 240, 240);
+  draw_screen(img);
 
-
+//
 //  for (int i=0; i<120; i+=1) {
 //    draw_pixel(120, i, color565(0, 128, 255));
 //  }
-//  HAL_Delay(1000);
 //  for (int i=0; i<120; i+=1) {
 //    draw_pixel(120, i, color565(255, 128, 0));
 //  }
 
-
-//  HAL_Delay(100);
 
   counter += 1;
 }
