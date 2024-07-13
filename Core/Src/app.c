@@ -75,6 +75,7 @@ uint8_t initcmd[] = {
 static inline void swap_bytes(size_t len, uint16_t *dest, uint16_t *src) {
   for (size_t i = 0; i < len; i += 1) {
     dest[i] = __builtin_bswap16(src[i]);
+//    dest[i] = src[i];
   }
 }
 
@@ -124,14 +125,25 @@ void send_command(uint8_t commandByte, uint8_t *dataBytes, uint8_t numDataBytes)
   spi_end();
 }
 
+static inline void SPI_setMode(SPI_HandleTypeDef *hspi, uint32_t data_size) {
+  hspi1.Init.DataSize = data_size;
+  WRITE_REG(hspi->Instance->CR1, ((hspi->Init.Mode & (SPI_CR1_MSTR | SPI_CR1_SSI)) |
+                                    (hspi->Init.Direction & (SPI_CR1_RXONLY | SPI_CR1_BIDIMODE)) |
+                                    (hspi->Init.DataSize & SPI_CR1_DFF) |
+                                    (hspi->Init.CLKPolarity & SPI_CR1_CPOL) |
+                                    (hspi->Init.CLKPhase & SPI_CR1_CPHA) |
+                                    (hspi->Init.NSS & SPI_CR1_SSM) |
+                                    (hspi->Init.BaudRatePrescaler & SPI_CR1_BR_Msk) |
+                                    (hspi->Init.FirstBit  & SPI_CR1_LSBFIRST) |
+                                    (hspi->Init.CRCCalculation & SPI_CR1_CRCEN)));
+}
+
 
 static inline void SPI_WRITE16(uint16_t w) {
-  swap_bytes(1, &w, &w);
-
-  HAL_SPI_Transmit(&hspi1, (uint8_t *)&w, 2, 100);
-
-//  HAL_SPI_Transmit(&hspi1, &w_hi, 1, 100);
-//  HAL_SPI_Transmit(&hspi1, &w_lo, 1, 100);
+//  swap_bytes(1, &w, &w);
+  SPI_setMode(&hspi1, SPI_DATASIZE_16BIT);
+  HAL_SPI_Transmit(&hspi1, (uint8_t *)&w, 1, 100);
+  SPI_setMode(&hspi1, SPI_DATASIZE_8BIT);
 }
 
 
@@ -148,10 +160,9 @@ void set_addr_window(uint16_t x1, uint16_t y1, uint16_t w,
 }
 
 void write_pixels(uint16_t *colors, uint32_t len) {
-//  while (len--) {
-//    SPI_WRITE16(*colors++);
-//  }
-  HAL_SPI_Transmit(&hspi1, (uint8_t *)colors, len*2, 100);
+  SPI_setMode(&hspi1, SPI_DATASIZE_16BIT);
+  HAL_SPI_Transmit(&hspi1, (uint8_t *)colors, len, 100);
+  SPI_setMode(&hspi1, SPI_DATASIZE_8BIT);
 }
 
 void draw_pixel(int16_t x, int16_t y, uint16_t color) {
@@ -208,6 +219,10 @@ void draw_rgb_bitmap(int16_t x, int16_t y, uint16_t *pcolors, int16_t w, int16_t
   set_addr_window(0, 0, w, h);// Clipped area
 
 
+//  SPI_setMode(&hspi1, SPI_DATASIZE_16BIT);
+//  HAL_SPI_Transmit(&hspi1, (uint8_t *)pcolors, h*w, 100);
+//  SPI_setMode(&hspi1, SPI_DATASIZE_8BIT);
+
   for (size_t i = 0; i < h; i += 1) {             // For each (clipped) scanline...
     write_pixels(pcolors, w);  // Push one (clipped) row
     pcolors += w;             // Advance pointer by one full (unclipped) line
@@ -218,6 +233,7 @@ void draw_rgb_bitmap(int16_t x, int16_t y, uint16_t *pcolors, int16_t w, int16_t
 }
 
 uint16_t img[240 * 240];
+uint8_t counter;
 
 
 void APP_init() {
@@ -260,38 +276,25 @@ void APP_init() {
 //  digitalWrite(TFT_BL, HIGH); // Backlight on
   HAL_GPIO_WritePin(TFT_BL_GPIO, TFT_BL_PIN, GPIO_PIN_SET);
 
-
-  for (int i=0; i<240*240; i+=1) {
-    img[i] = color565(0, 128, 255);
-  }
-
+  fill_screen(0xFFFF);
 }
 
 
 void APP_main() {
   char str[128];
-  fill_screen(0xFFFF);
+
+  //  sprintf(str, "Done!\n");
+  //  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen(str), 100);
+
+  for (size_t r = 0; r < HEIGHT; r += 1) {
+    for (size_t c = 0; c < WIDTH; c += 1) {
+      size_t idx = r * WIDTH + c;
+      img[idx] = color565(counter, 40, 40 + r / 2);
+    }
+  }
 
   draw_rgb_bitmap(0, 0, img, 240, 240);
 
-
-  sprintf(str, "fill\n");
-  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen(str), 100);
-
-
-  draw_pixel(120, 120, color565(0, 128, 255));
-  HAL_Delay(10);
-  draw_pixel(120, 121, color565(0, 128, 255));
-  HAL_Delay(10);
-  draw_pixel(120, 122, color565(0, 128, 255));
-  HAL_Delay(500);
-
-  draw_pixel(120, 120, color565(255, 128, 0));
-  HAL_Delay(10);
-  draw_pixel(120, 121, color565(255, 128, 0));
-  HAL_Delay(10);
-  draw_pixel(120, 122, color565(255, 128, 0));
-  HAL_Delay(500);
 
 //  for (int i=0; i<120; i+=1) {
 //    draw_pixel(120, i, color565(0, 128, 255));
@@ -300,12 +303,9 @@ void APP_main() {
 //  for (int i=0; i<120; i+=1) {
 //    draw_pixel(120, i, color565(255, 128, 0));
 //  }
-  HAL_Delay(1000);
 
 
-  sprintf(str, "Done!\n");
-  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen(str), 100);
+//  HAL_Delay(100);
 
-
-  HAL_Delay(100);
+  counter += 1;
 }
