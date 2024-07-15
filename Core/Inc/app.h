@@ -14,6 +14,29 @@
 
 #include "stm32f4xx_hal.h"
 
+
+
+
+
+// http://elm-chan.org/junk/32bit/binclude.html
+#define INCLUDE_FILE(section, filename, symbol) asm (\
+    ".section "#section"\n"                   /* Change section */\
+    ".balign 4\n"                             /* Word alignment */\
+    ".global "#symbol"_start\n"               /* Export the object start address */\
+    ".global "#symbol"_data\n"                /* Export the object address */\
+    #symbol"_start:\n"                        /* Define the object start address label */\
+    #symbol"_data:\n"                         /* Define the object label */\
+    ".incbin \""filename"\"\n"                /* Import the file */\
+    ".global "#symbol"_end\n"                 /* Export the object end address */\
+    #symbol"_end:\n"                          /* Define the object end address label */\
+    ".balign 4\n"                             /* Word alignment */\
+    ".section \".text\"\n")                   /* Restore section */
+
+
+
+
+
+
 // Chip select
 #define TFT_CS_GPIO   GPIOB
 #define TFT_CS_PIN    GPIO_PIN_6
