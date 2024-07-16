@@ -1,0 +1,11 @@
+../Core/Inc/gc9a01a.h:188:20:GC9A01A_set_spi_datasize	16	static
+../Core/Inc/gc9a01a.h:202:20:GC9A01A_start_spi_transaction	16	static
+../Core/Inc/gc9a01a.h:206:20:GC9A01A_end_spi_transaction	16	static
+../Core/Inc/gc9a01a.h:210:20:GC9A01A_transmit_command	16	static
+../Core/Inc/gc9a01a.h:221:20:GC9A01A_transmit_data	24	static
+../Core/Src/gc9a01a.c:12:6:GC9A01A_init	32	static
+../Core/Src/gc9a01a.c:68:6:GC9A01A_configure_param	24	static
+../Core/Src/gc9a01a.c:81:6:GC9A01A_set_addr_window	32	static
+../Core/Src/gc9a01a.c:104:6:GC9A01A_draw_pixel	32	static
+../Core/Src/gc9a01a.c:115:6:GC9A01A_draw_pixels	40	static
+../Core/Src/gc9a01a.c:131:6:GC9A01A_draw_screen	24	static

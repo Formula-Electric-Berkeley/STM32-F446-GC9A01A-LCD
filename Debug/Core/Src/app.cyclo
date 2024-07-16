@@ -1,12 +1,2 @@
-../Core/Src/app.c:88:20:set_spi_datasize	1
-../Core/Src/app.c:102:20:start_spi_transaction	1
-../Core/Src/app.c:106:20:end_spi_transaction	1
-../Core/Src/app.c:110:20:transmit_command	1
-../Core/Src/app.c:121:20:transmit_data	1
-../Core/Src/app.c:126:6:configure_param	1
-../Core/Src/app.c:140:6:set_addr_window	1
-../Core/Src/app.c:162:6:draw_pixel	1
-../Core/Src/app.c:173:6:draw_pixels	2
-../Core/Src/app.c:189:6:draw_screen	1
-../Core/Src/app.c:199:6:APP_init	5
-../Core/Src/app.c:248:6:APP_main	1
+../Core/Src/app.c:32:6:APP_init	3
+../Core/Src/app.c:61:6:APP_main	1
